@@ -1,7 +1,14 @@
 import streamlit as st
 import requests
-from bs4 import BeautifulSoup
 import re
+
+# Try to import BeautifulSoup with fallback
+try:
+    from bs4 import BeautifulSoup
+    BEAUTIFULSOUP_AVAILABLE = True
+except ImportError:
+    BEAUTIFULSOUP_AVAILABLE = False
+    st.warning("⚠️ beautifulsoup4 is not installed. Some features may be limited.")
 
 def main():
     # Set page configuration
@@ -14,6 +21,17 @@ def main():
     # Header
     st.title("Mr Eyobed Sebrala Auto Grader")
     st.markdown("---")
+    
+    # Check for beautifulsoup4
+    if not BEAUTIFULSOUP_AVAILABLE:
+        st.error("""
+        ❌ **Required package missing!**
+        
+        Please install beautifulsoup4 by:
+        1. Adding it to `requirements.txt`
+        2. Or run: `pip install beautifulsoup4==4.12.2`
+        """)
+        return
     
     # Get user input
     with st.form("github_form"):
