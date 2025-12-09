@@ -4,8 +4,8 @@ import re
 
 st.set_page_config(page_title="Bootstrap Grid Auto-Grader", layout="wide")
 
-st.title("🎓 Bootstrap Grid Layout Auto-Grader")
-st.write("Submit your assignment for automated grading")
+st.title("🎓 Mr Eyobed Auto Grader")
+st.write("Bootstrap Grid Layout - Submit your assignment for automated grading")
 
 # Student Information Form
 st.header("📋 Student Information")
@@ -260,3 +260,6 @@ else:
     
     **Total: 100 points**
     """)
+    
+    st.markdown("---")
+    st.markdown("<h3 style='text-align: center; color: gray;'>Do things Genuinely</h3>", unsafe_allow_html=True)
