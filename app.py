@@ -1,265 +1,444 @@
 import streamlit as st
+import requests
 from bs4 import BeautifulSoup
 import re
 
-st.set_page_config(page_title="Bootstrap Grid Auto-Grader", layout="wide")
-
-st.title("🎓 Mr Eyobed Auto Grader")
-st.write("Bootstrap Grid Layout - Submit your assignment for automated grading")
-
-# Student Information Form
-st.header("📋 Student Information")
-
-with st.form("student_info"):
-    col1, col2 = st.columns(2)
+def main():
+    # Set page configuration
+    st.set_page_config(
+        page_title="Mr Eyobed Sebrala Auto Grader",
+        page_icon="📊",
+        layout="wide"
+    )
     
-    with col1:
-        group_name = st.text_input("Group Name *", placeholder="e.g., Team Alpha")
+    # Header
+    st.title("Mr Eyobed Sebrala Auto Grader")
+    st.markdown("---")
     
-    with col2:
-        github_link = st.text_input("GitHub Repository Link *", placeholder="https://github.com/username/repo")
+    # Get user input
+    with st.form("github_form"):
+        st.subheader("Student Information")
+        username = st.text_input("Enter your username:")
+        github_link = st.text_input("Enter your GitHub repository link:")
+        submit_button = st.form_submit_button("Grade Assignment")
     
-    submit_info = st.form_submit_button("Save Information")
+    if submit_button and username and github_link:
+        grade_assignment(username, github_link)
+
+def grade_assignment(username, github_link):
+    """Grade the student's assignment based on requirements"""
     
-    if submit_info:
-        if group_name and github_link:
-            st.session_state.group_name = group_name
-            st.session_state.github_link = github_link
-            st.success("✅ Student information saved!")
-        else:
-            st.error("❌ Please fill in all required fields")
-
-# Show saved information
-if 'group_name' in st.session_state:
-    st.info(f"**Group:** {st.session_state.group_name} | **GitHub:** {st.session_state.github_link}")
-
-st.markdown("---")
-
-# File Upload Section
-st.header("📤 Upload Assignment")
-uploaded_file = st.file_uploader("Choose your HTML file", type=['html'])
-
-def check_bootstrap_link(soup):
-    """Check if Bootstrap CSS is linked"""
-    links = soup.find_all('link', href=re.compile(r'bootstrap.*\.css'))
-    return len(links) > 0, links
-
-def check_container(soup):
-    """Check if there's a container class"""
-    containers = soup.find_all(class_=re.compile(r'\bcontainer\b'))
-    return len(containers) > 0, containers
-
-def check_rows(soup):
-    """Check for row classes"""
-    rows = soup.find_all(class_=re.compile(r'\brow\b'))
-    return len(rows) >= 3, rows
-
-def check_columns(soup):
-    """Check for column classes (col-*)"""
-    cols = soup.find_all(class_=re.compile(r'\bcol-?\d*\b'))
-    return len(cols) >= 8, cols
-
-def check_horizontal_alignment(soup):
-    """Check for horizontal alignment classes (justify-content-*)"""
-    h_align = soup.find_all(class_=re.compile(r'justify-content-(center|start|end|between|around|evenly)'))
-    return len(h_align) >= 2, h_align
-
-def check_vertical_alignment(soup):
-    """Check for vertical alignment classes (align-items-*)"""
-    v_align = soup.find_all(class_=re.compile(r'align-items-(center|start|end|stretch|baseline)'))
-    return len(v_align) >= 3, v_align
-
-def analyze_sections(rows):
-    """Analyze each section for specific requirements"""
-    sections = []
+    st.markdown("---")
+    st.subheader(f"Grading Results for: {username}")
     
-    for idx, row in enumerate(rows, 1):
-        section_info = {
-            'number': idx,
-            'classes': row.get('class', []),
-            'columns': len(row.find_all(class_=re.compile(r'\bcol-?\d*\b'))),
-            'h_alignment': [cls for cls in row.get('class', []) if 'justify-content' in cls],
-            'v_alignment': [cls for cls in row.get('class', []) if 'align-items' in cls]
-        }
-        sections.append(section_info)
+    # Initialize score
+    total_score = 0
+    max_score = 10
+    results = []
     
-    return sections
-
-if uploaded_file is not None:
-    # Check if student info is provided
-    if 'group_name' not in st.session_state or 'github_link' not in st.session_state:
-        st.error("⚠️ Please fill in student information before uploading your assignment!")
-    else:
-        html_content = uploaded_file.read().decode('utf-8')
+    try:
+        # Clean and validate GitHub URL
+        github_link = clean_github_url(github_link)
+        
+        # Check if it's a valid GitHub URL
+        if not is_valid_github_url(github_link):
+            st.error("Invalid GitHub URL. Please provide a valid GitHub repository link.")
+            return
+        
+        # Fetch HTML content from GitHub
+        html_content = fetch_html_from_github(github_link)
+        
+        if not html_content:
+            st.error("Could not fetch HTML content from the provided GitHub link.")
+            return
+        
+        # Parse HTML
         soup = BeautifulSoup(html_content, 'html.parser')
         
-        st.success("✅ File uploaded successfully!")
+        # Grade each requirement
+        results.append(grade_doctype(soup))
+        results.append(grade_container(soup))
+        results.append(grade_rows(soup))
+        results.append(grade_columns(soup))
+        results.append(grade_horizontal_alignment(soup))
+        results.append(grade_vertical_alignment(soup))
+        results.append(grade_bootstrap_css(soup))
+        results.append(grade_bootstrap_js(soup))
+        results.append(grade_specific_classes(soup))
+        results.append(grade_layout_structure(soup))
         
-        st.header("📊 Grading Results")
+        # Calculate total score
+        total_score = sum([result['score'] for result in results])
         
-        # Display student info in results
-        st.markdown(f"""
-        **Group Name:** {st.session_state.group_name}  
-        **GitHub Repository:** {st.session_state.github_link}
-        """)
+        # Display results
+        col1, col2 = st.columns(2)
         
-        st.markdown("---")
-        
-        # Create scoring system
-        total_score = 0
-        max_score = 100
-        
-        # Check 1: Bootstrap CSS Link
-        st.subheader("1. Bootstrap CSS Link (10 points)")
-        has_bootstrap, links = check_bootstrap_link(soup)
-        if has_bootstrap:
-            st.success(f"✅ Bootstrap CSS is properly linked ({len(links)} link(s) found)")
-            total_score += 10
-        else:
-            st.error("❌ Bootstrap CSS link not found")
-        
-        # Check 2: Container
-        st.subheader("2. Container Class (15 points)")
-        has_container, containers = check_container(soup)
-        if has_container:
-            st.success(f"✅ Container class found ({len(containers)} container(s))")
-            total_score += 15
-        else:
-            st.error("❌ Container class not found")
-        
-        # Check 3: Rows
-        st.subheader("3. Row Classes (15 points)")
-        has_rows, rows = check_rows(soup)
-        if has_rows:
-            st.success(f"✅ Multiple rows found ({len(rows)} rows)")
-            total_score += 15
-        else:
-            st.warning(f"⚠️ Found {len(rows) if rows else 0} rows (need at least 3)")
-            total_score += (len(rows) * 5) if rows else 0
-        
-        # Check 4: Columns
-        st.subheader("4. Column Classes (15 points)")
-        has_cols, cols = check_columns(soup)
-        if has_cols:
-            st.success(f"✅ Multiple columns found ({len(cols)} columns)")
-            total_score += 15
-        else:
-            st.warning(f"⚠️ Found {len(cols) if cols else 0} columns (need at least 8)")
-            total_score += min(len(cols) * 2, 15) if cols else 0
-        
-        # Check 5: Horizontal Alignment
-        st.subheader("5. Horizontal Alignment (justify-content-*) (20 points)")
-        has_h_align, h_aligns = check_horizontal_alignment(soup)
-        if has_h_align:
-            st.success(f"✅ Horizontal alignment classes found ({len(h_aligns)} instances)")
-            for elem in h_aligns[:3]:
-                classes = [cls for cls in elem.get('class', []) if 'justify-content' in cls]
-                st.write(f"   - {', '.join(classes)}")
-            total_score += 20
-        else:
-            st.warning(f"⚠️ Found {len(h_aligns) if h_aligns else 0} horizontal alignment classes (need at least 2)")
-            total_score += (len(h_aligns) * 10) if h_aligns else 0
-        
-        # Check 6: Vertical Alignment
-        st.subheader("6. Vertical Alignment (align-items-*) (25 points)")
-        has_v_align, v_aligns = check_vertical_alignment(soup)
-        if has_v_align:
-            st.success(f"✅ Vertical alignment classes found ({len(v_aligns)} instances)")
-            for elem in v_aligns[:3]:
-                classes = [cls for cls in elem.get('class', []) if 'align-items' in cls]
-                st.write(f"   - {', '.join(classes)}")
-            total_score += 25
-        else:
-            st.warning(f"⚠️ Found {len(v_aligns) if v_aligns else 0} vertical alignment classes (need at least 3)")
-            total_score += (len(v_aligns) * 8) if v_aligns else 0
-        
-        # Section Analysis
-        if rows:
-            st.header("🔍 Section-by-Section Analysis")
-            sections = analyze_sections(rows)
-            
-            for section in sections:
-                with st.expander(f"Section {section['number']} - {section['columns']} columns"):
-                    st.write(f"**Row classes:** {', '.join(section['classes'])}")
-                    st.write(f"**Number of columns:** {section['columns']}")
-                    st.write(f"**Horizontal alignment:** {', '.join(section['h_alignment']) if section['h_alignment'] else 'None'}")
-                    st.write(f"**Vertical alignment:** {', '.join(section['v_alignment']) if section['v_alignment'] else 'None'}")
-        
-        # Final Score
-        st.header("🎯 Final Score")
-        percentage = (total_score / max_score) * 100
-        
-        col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Points Earned", f"{total_score}/{max_score}")
+            st.metric("Final Grade", f"{total_score}/{max_score}")
+            
         with col2:
+            percentage = (total_score / max_score) * 100
             st.metric("Percentage", f"{percentage:.1f}%")
-        with col3:
-            if percentage >= 90:
-                grade = "A"
-            elif percentage >= 80:
-                grade = "B"
-            elif percentage >= 70:
-                grade = "C"
-            else:
-                grade = "F"
-            st.metric("Grade", grade)
         
-        # Progress bar
-        st.progress(total_score / max_score)
+        # Display detailed results
+        st.markdown("### Detailed Breakdown:")
         
-        # Summary
-        st.header("📝 Summary")
-        st.markdown(f"""
-        **Submission Details:**
-        - Group: {st.session_state.group_name}
-        - GitHub: {st.session_state.github_link}
-        - Score: {total_score}/{max_score} ({percentage:.1f}%)
-        - Grade: {grade}
-        """)
+        for result in results:
+            with st.expander(f"{result['requirement']} - {result['score']}/{result['max_score']} point(s)"):
+                if result['passed']:
+                    st.success("✅ " + result['feedback'])
+                else:
+                    st.error("❌ " + result['feedback'])
+                
+                if result.get('found_elements'):
+                    st.code(result['found_elements'], language='html')
         
-        if percentage >= 90:
-            st.success("🎉 Excellent work! Your Bootstrap grid layout meets all requirements.")
-        elif percentage >= 70:
-            st.info("👍 Good job! Your layout meets most requirements. Check the feedback above for areas to improve.")
+        # Display final feedback
+        st.markdown("---")
+        st.subheader("Final Feedback")
+        
+        if total_score >= 9:
+            st.success("🎉 Excellent work! All requirements are met perfectly!")
+        elif total_score >= 7:
+            st.info("👍 Good job! Most requirements are met.")
+        elif total_score >= 5:
+            st.warning("📝 Fair attempt, but needs improvement.")
         else:
-            st.warning("⚠️ Your layout needs more work. Review the requirements and ensure you have:")
-            st.write("- Container class")
-            st.write("- Multiple rows (at least 3)")
-            st.write("- Multiple columns (at least 8)")
-            st.write("- Horizontal alignment classes (justify-content-*)")
-            st.write("- Vertical alignment classes (align-items-*)")
+            st.error("🚨 Needs significant improvement. Please review the requirements.")
+            
+    except Exception as e:
+        st.error(f"An error occurred during grading: {str(e)}")
 
-else:
-    st.info("👆 Please enter your group information and upload your HTML file to begin grading")
+def clean_github_url(url):
+    """Clean and format GitHub URL"""
+    # Remove trailing slash
+    url = url.rstrip('/')
     
-    st.markdown("---")
-    st.subheader("📋 Assignment Requirements")
-    st.write("""
-    Your HTML file must include:
+    # If it's a GitHub repo URL, convert to raw content URL
+    if 'github.com' in url and 'blob' in url:
+        # Convert to raw URL
+        url = url.replace('github.com', 'raw.githubusercontent.com')
+        url = url.replace('/blob/', '/')
     
-    **1. Bootstrap Setup (10 points)**
-    - Bootstrap CSS CDN link in `<head>`
+    return url
+
+def is_valid_github_url(url):
+    """Check if URL is a valid GitHub URL"""
+    github_patterns = [
+        r'https?://github\.com/[\w\-]+/[\w\-]+',
+        r'https?://raw\.githubusercontent\.com/[\w\-]+/[\w\-]+/[\w\-/\.]+'
+    ]
     
-    **2. Container (15 points)**
-    - At least one element with `container` class
+    for pattern in github_patterns:
+        if re.match(pattern, url):
+            return True
+    return False
+
+def fetch_html_from_github(url):
+    """Fetch HTML content from GitHub"""
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.text
+    except:
+        # Try alternative approach - look for index.html
+        try:
+            if 'raw.githubusercontent.com' not in url:
+                # Extract user and repo from URL
+                match = re.search(r'github\.com/([\w\-]+)/([\w\-]+)', url)
+                if match:
+                    user, repo = match.groups()
+                    raw_url = f"https://raw.githubusercontent.com/{user}/{repo}/main/index.html"
+                    response = requests.get(raw_url, timeout=10)
+                    response.raise_for_status()
+                    return response.text
+        except:
+            return None
+    return None
+
+def grade_doctype(soup):
+    """Check for DOCTYPE declaration"""
+    requirement = "DOCTYPE Declaration"
+    max_score = 1
     
-    **3. Rows (15 points)**
-    - At least 3 elements with `row` class
+    if soup.original_encoding and '<!DOCTYPE html>' in str(soup):
+        return {
+            'requirement': requirement,
+            'passed': True,
+            'score': max_score,
+            'max_score': max_score,
+            'feedback': 'DOCTYPE declaration found.',
+            'found_elements': '<!DOCTYPE html>'
+        }
+    else:
+        return {
+            'requirement': requirement,
+            'passed': False,
+            'score': 0,
+            'max_score': max_score,
+            'feedback': 'DOCTYPE declaration missing or incorrect.'
+        }
+
+def grade_container(soup):
+    """Check for Bootstrap container"""
+    requirement = "Bootstrap Container"
+    max_score = 1
     
-    **4. Columns (15 points)**
-    - At least 8 elements with column classes (`col-*`)
+    container = soup.find('div', class_='container')
+    if container:
+        return {
+            'requirement': requirement,
+            'passed': True,
+            'score': max_score,
+            'max_score': max_score,
+            'feedback': 'Bootstrap container found.',
+            'found_elements': str(container)[:200] + '...' if len(str(container)) > 200 else str(container)
+        }
+    else:
+        return {
+            'requirement': requirement,
+            'passed': False,
+            'score': 0,
+            'max_score': max_score,
+            'feedback': 'No Bootstrap container found.'
+        }
+
+def grade_rows(soup):
+    """Check for Bootstrap rows"""
+    requirement = "Bootstrap Rows"
+    max_score = 1
     
-    **5. Horizontal Alignment (20 points)**
-    - At least 2 uses of `justify-content-*` classes
-    - Examples: `justify-content-center`, `justify-content-start`, `justify-content-end`
+    rows = soup.find_all('div', class_='row')
+    if len(rows) >= 4:  # Looking for at least 4 rows as in the example
+        return {
+            'requirement': requirement,
+            'passed': True,
+            'score': max_score,
+            'max_score': max_score,
+            'feedback': f'Found {len(rows)} Bootstrap rows.',
+            'found_elements': '\n\n'.join([str(row)[:150] + '...' for row in rows[:3]])
+        }
+    else:
+        return {
+            'requirement': requirement,
+            'passed': False,
+            'score': 0,
+            'max_score': max_score,
+            'feedback': f'Only found {len(rows)} row(s). Expected at least 4.'
+        }
+
+def grade_columns(soup):
+    """Check for Bootstrap columns"""
+    requirement = "Bootstrap Columns"
+    max_score = 1
     
-    **6. Vertical Alignment (25 points)**
-    - At least 3 uses of `align-items-*` classes
-    - Examples: `align-items-center`, `align-items-end`, `align-items-start`
+    # Look for various column classes
+    col_classes = ['col-1', 'col-2', 'col-3', 'col-4', 'col-5', 'col-6', 
+                   'col-7', 'col-8', 'col-9', 'col-10', 'col-11', 'col-12']
     
-    **Total: 100 points**
-    """)
+    columns = []
+    for col_class in col_classes:
+        columns.extend(soup.find_all(class_=lambda x: x and col_class in x.split()))
     
-    st.markdown("---")
-    st.markdown("<h3 style='text-align: center; color: gray;'>Do things Genuinely</h3>", unsafe_allow_html=True)
+    if len(columns) >= 8:  # Looking for multiple columns
+        return {
+            'requirement': requirement,
+            'passed': True,
+            'score': max_score,
+            'max_score': max_score,
+            'feedback': f'Found {len(columns)} Bootstrap columns.',
+            'found_elements': '\n\n'.join([str(col)[:100] + '...' for col in columns[:5]])
+        }
+    else:
+        return {
+            'requirement': requirement,
+            'passed': False,
+            'score': 0,
+            'max_score': max_score,
+            'feedback': f'Only found {len(columns)} column(s). Expected multiple columns.'
+        }
+
+def grade_horizontal_alignment(soup):
+    """Check for horizontal alignment classes"""
+    requirement = "Horizontal Alignment"
+    max_score = 1
+    
+    # Check for horizontal alignment classes
+    horiz_classes = ['justify-content-center', 'justify-content-start', 
+                     'justify-content-end', 'justify-content-between', 
+                     'justify-content-around']
+    
+    found = []
+    for h_class in horiz_classes:
+        elements = soup.find_all(class_=lambda x: x and h_class in x.split())
+        found.extend(elements)
+    
+    if found:
+        return {
+            'requirement': requirement,
+            'passed': True,
+            'score': max_score,
+            'max_score': max_score,
+            'feedback': f'Found horizontal alignment classes ({len(found)} instances).',
+            'found_elements': '\n'.join([str(element)[:150] for element in found[:3]])
+        }
+    else:
+        return {
+            'requirement': requirement,
+            'passed': False,
+            'score': 0,
+            'max_score': max_score,
+            'feedback': 'No horizontal alignment classes found.'
+        }
+
+def grade_vertical_alignment(soup):
+    """Check for vertical alignment classes"""
+    requirement = "Vertical Alignment"
+    max_score = 1
+    
+    # Check for vertical alignment classes
+    vert_classes = ['align-items-center', 'align-items-start', 
+                    'align-items-end', 'align-items-baseline', 
+                    'align-items-stretch']
+    
+    found = []
+    for v_class in vert_classes:
+        elements = soup.find_all(class_=lambda x: x and v_class in x.split())
+        found.extend(elements)
+    
+    if found:
+        return {
+            'requirement': requirement,
+            'passed': True,
+            'score': max_score,
+            'max_score': max_score,
+            'feedback': f'Found vertical alignment classes ({len(found)} instances).',
+            'found_elements': '\n'.join([str(element)[:150] for element in found[:3]])
+        }
+    else:
+        return {
+            'requirement': requirement,
+            'passed': False,
+            'score': 0,
+            'max_score': max_score,
+            'feedback': 'No vertical alignment classes found.'
+        }
+
+def grade_bootstrap_css(soup):
+    """Check for Bootstrap CSS inclusion"""
+    requirement = "Bootstrap CSS Link"
+    max_score = 1
+    
+    # Check for Bootstrap CSS link
+    bootstrap_css_links = soup.find_all('link', href=lambda x: x and 'bootstrap' in x.lower())
+    
+    if bootstrap_css_links:
+        return {
+            'requirement': requirement,
+            'passed': True,
+            'score': max_score,
+            'max_score': max_score,
+            'feedback': 'Bootstrap CSS link found.',
+            'found_elements': '\n'.join([str(link) for link in bootstrap_css_links])
+        }
+    else:
+        return {
+            'requirement': requirement,
+            'passed': False,
+            'score': 0,
+            'max_score': max_score,
+            'feedback': 'Bootstrap CSS link not found.'
+        }
+
+def grade_bootstrap_js(soup):
+    """Check for Bootstrap JS inclusion"""
+    requirement = "Bootstrap JS Script"
+    max_score = 1
+    
+    # Check for Bootstrap JS script
+    bootstrap_js_scripts = soup.find_all('script', src=lambda x: x and 'bootstrap' in x.lower())
+    
+    if bootstrap_js_scripts:
+        return {
+            'requirement': requirement,
+            'passed': True,
+            'score': max_score,
+            'max_score': max_score,
+            'feedback': 'Bootstrap JS script found.',
+            'found_elements': '\n'.join([str(script) for script in bootstrap_js_scripts])
+        }
+    else:
+        return {
+            'requirement': requirement,
+            'passed': False,
+            'score': 0,
+            'max_score': max_score,
+            'feedback': 'Bootstrap JS script not found.'
+        }
+
+def grade_specific_classes(soup):
+    """Check for specific Bootstrap utility classes"""
+    requirement = "Bootstrap Utility Classes"
+    max_score = 1
+    
+    # Check for common Bootstrap utility classes
+    utility_classes = ['bg-', 'text-', 'p-', 'm-', 'rounded', 'shadow', 'fs-', 'fw-']
+    
+    found_count = 0
+    found_examples = []
+    
+    for util in utility_classes:
+        elements = soup.find_all(class_=lambda x: x and util in x)
+        found_count += len(elements)
+        if elements and len(found_examples) < 3:
+            found_examples.append(str(elements[0])[:150])
+    
+    if found_count >= 10:  # Looking for multiple utility classes
+        return {
+            'requirement': requirement,
+            'passed': True,
+            'score': max_score,
+            'max_score': max_score,
+            'feedback': f'Found {found_count} Bootstrap utility class instances.',
+            'found_elements': '\n\n'.join(found_examples)
+        }
+    else:
+        return {
+            'requirement': requirement,
+            'passed': False,
+            'score': 0,
+            'max_score': max_score,
+            'feedback': f'Only found {found_count} utility class instances. Expected more.'
+        }
+
+def grade_layout_structure(soup):
+    """Check overall layout structure"""
+    requirement = "Layout Structure"
+    max_score = 1
+    
+    # Check for structured layout with multiple sections
+    container = soup.find('div', class_='container')
+    if container:
+        # Count direct child rows
+        rows = container.find_all('div', class_='row', recursive=False)
+        
+        if len(rows) >= 3:  # At least 3 main sections
+            return {
+                'requirement': requirement,
+                'passed': True,
+                'score': max_score,
+                'max_score': max_score,
+                'feedback': f'Good layout structure with {len(rows)} main sections.',
+                'found_elements': f'Container with {len(rows)} direct child rows'
+            }
+    
+    return {
+        'requirement': requirement,
+        'passed': False,
+        'score': 0,
+        'max_score': max_score,
+        'feedback': 'Layout structure needs improvement. Should have container with multiple row sections.'
+    }
+
+if __name__ == "__main__":
+    main()
